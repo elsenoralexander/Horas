@@ -1,0 +1,509 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Control de Horas de Electromedicina</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f3f4f6;
+            display: flex;
+            justify-content: center;
+            align-items: flex-start;
+            min-height: 100vh;
+            padding: 2rem;
+        }
+        .container {
+            width: 100%;
+            max-width: 1200px;
+            background-color: #ffffff;
+            border-radius: 1.5rem; /* rounded-3xl */
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05); /* shadow-xl */
+            padding: 2rem;
+            display: flex;
+            flex-direction: column;
+            gap: 1.5rem;
+        }
+        .day-card {
+            background-color: #f9fafb;
+            border-radius: 1rem; /* rounded-2xl */
+            padding: 1.5rem;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06); /* shadow-md */
+            border: 1px solid #e5e7eb;
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+        }
+        .finished-day {
+            background-color: #d1fae5; /* bg-emerald-100 */
+            border-color: #34d399; /* border-emerald-400 */
+        }
+        .btn-primary {
+            @apply px-4 py-2 bg-blue-600 text-white font-semibold rounded-lg shadow-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-colors duration-200;
+        }
+        .btn-secondary {
+            @apply px-4 py-2 bg-gray-200 text-gray-800 font-semibold rounded-lg shadow-md hover:bg-gray-300 focus:outline-none focus:ring-2 focus:ring-gray-300 focus:ring-offset-2 transition-colors duration-200;
+        }
+        .btn-danger {
+            @apply px-3 py-1 bg-red-500 text-white rounded-md hover:bg-red-600 transition-colors duration-200;
+        }
+        input[type="time"]::-webkit-calendar-picker-indicator {
+            background: none;
+            display: none;
+        }
+        input[type="time"] {
+            -webkit-appearance: none;
+            -moz-appearance: none;
+            appearance: none;
+            background-color: white;
+            padding: 0.5rem;
+            border-radius: 0.5rem;
+            border: 1px solid #d1d5db;
+        }
+    </style>
+</head>
+<body class="bg-gray-100 p-8">
+    <div class="container">
+        <!-- Navegación de la semana -->
+        <div class="flex flex-col sm:flex-row justify-between items-center bg-gray-50 p-4 rounded-xl shadow-sm border border-gray-200">
+            <button id="prevWeekBtn" class="btn-secondary mb-2 sm:mb-0">
+                <span class="inline-block align-middle mr-1">◀️</span> Semana Anterior
+            </button>
+            <h2 id="weekRange" class="text-xl sm:text-2xl font-bold text-gray-800 text-center flex-grow mx-4"></h2>
+            <button id="nextWeekBtn" class="btn-secondary">
+                Semana Siguiente <span class="inline-block align-middle ml-1">▶️</span>
+            </button>
+        </div>
+
+        <!-- Contenedor de días de la semana -->
+        <div id="daysContainer" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+            <!-- Los días se renderizarán aquí por JavaScript -->
+        </div>
+    </div>
+
+    <script>
+        // Obtener la fecha de inicio de la semana (Lunes)
+        function getStartOfWeek(date) {
+            const d = new Date(date);
+            const day = d.getDay();
+            const diff = d.getDate() - day + (day === 0 ? -6 : 1); // Ajusta a Lunes (1) o si es Domingo (0), va al Lunes de la semana anterior
+            d.setDate(diff);
+            d.setHours(0, 0, 0, 0);
+            return d;
+        }
+
+        // Formatea la fecha a YYYY-MM-DD
+        function formatDate(date) {
+            const year = date.getFullYear();
+            const month = String(date.getMonth() + 1).padStart(2, '0');
+            const day = String(date.getDate()).padStart(2, '0');
+            return `${year}-${month}-${day}`;
+        }
+
+        // Parsea YYYY-MM-DD a objeto Date
+        function parseDate(dateString) {
+            const [year, month, day] = dateString.split('-').map(Number);
+            return new Date(year, month - 1, day);
+        }
+
+        // Calcula la duración en minutos entre dos horas (HH:MM)
+        function calculateDurationMinutes(startTime, endTime) {
+            if (!startTime || !endTime) return 0;
+            const [startH, startM] = startTime.split(':').map(Number);
+            const [endH, endM] = endTime.split(':').map(Number);
+            const startTotalMinutes = startH * 60 + startM;
+            const endTotalMinutes = endH * 60 + endM;
+
+            let duration = endTotalMinutes - startTotalMinutes;
+            if (duration < 0) {
+                // Si la hora de fin es del día siguiente (e.g., de 23:00 a 01:00)
+                duration += 24 * 60;
+            }
+            return duration;
+        }
+
+        // Formatea minutos a HH:MM
+        function formatMinutesToHHMM(minutes) {
+            const hours = Math.floor(minutes / 60);
+            const mins = minutes % 60;
+            return `${String(hours).padStart(2, '0')}:${String(mins).padStart(2, '0')}`;
+        }
+
+        // Convierte minutos a formato de horas decimales (ej: 7.5 horas)
+        function minutesToHoursDecimal(minutes) {
+            return (minutes / 60).toFixed(2);
+        }
+
+        // Genera un ID único para los avisos
+        function generateUniqueId() {
+            return Date.now().toString(36) + Math.random().toString(36).substring(2);
+        }
+
+        // Estado global de la aplicación
+        let currentWeekStartDate; // Objeto Date para el Lunes de la semana actual
+        const WEEKLY_DATA_KEY = 'electromedicina_horas_data'; // Clave para Local Storage
+        const WORKDAY_MINUTES = 8 * 60; // 8 horas en minutos (puedes ajustar esto)
+
+        // Carga los datos desde Local Storage
+        function loadData() {
+            try {
+                const data = localStorage.getItem(WEEKLY_DATA_KEY);
+                return data ? JSON.parse(data) : {};
+            } catch (e) {
+                console.error("Error cargando datos de Local Storage:", e);
+                return {};
+            }
+        }
+
+        // Guarda los datos en Local Storage
+        function saveData(data) {
+            try {
+                localStorage.setItem(WEEKLY_DATA_KEY, JSON.stringify(data));
+            } catch (e) {
+                console.error("Error guardando datos en Local Storage:", e);
+            }
+        }
+
+        // Inicializa la estructura de una semana si no existe
+        function getWeekData(startDateString, allData) {
+            if (!allData[startDateString]) {
+                const startDate = parseDate(startDateString);
+                const daysOfWeek = [];
+                for (let i = 0; i < 7; i++) {
+                    const dayDate = new Date(startDate);
+                    dayDate.setDate(startDate.getDate() + i);
+                    daysOfWeek.push({
+                        date: formatDate(dayDate),
+                        avisos: [],
+                        isFinished: false,
+                        totalMinutes: 0
+                    });
+                }
+                allData[startDateString] = {
+                    weekStartDate: startDateString,
+                    days: daysOfWeek
+                };
+            }
+            return allData[startDateString];
+        }
+
+        // Renderiza la semana completa
+        function renderWeek() {
+            const allData = loadData();
+            const weekData = getWeekData(formatDate(currentWeekStartDate), allData);
+            const daysContainer = document.getElementById('daysContainer');
+            daysContainer.innerHTML = ''; // Limpia el contenedor antes de renderizar
+
+            // Actualiza el rango de la semana en la UI
+            const endDate = new Date(currentWeekStartDate);
+            endDate.setDate(currentWeekStartDate.getDate() + 6);
+            document.getElementById('weekRange').textContent =
+                `Semana del ${formatDate(currentWeekStartDate)} al ${formatDate(endDate)}`;
+
+            weekData.days.forEach((day, index) => {
+                const dayCard = document.createElement('div');
+                dayCard.id = `day-${day.date}`;
+                dayCard.className = `day-card relative ${day.isFinished ? 'finished-day' : ''}`;
+                const dayName = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'][index];
+
+                // Determinar la última hora de fin del día para prellenar el siguiente "aviso"
+                const lastAviso = day.avisos.length > 0 ? day.avisos[day.avisos.length - 1] : null;
+                const lastAvisoEndTime = lastAviso ? lastAviso.endTime : '';
+
+                dayCard.innerHTML = `
+                    <h3 class="text-xl font-semibold text-gray-800 mb-2">${dayName}, ${day.date}</h3>
+                    <div class="avisos-list flex flex-col gap-3 mb-4">
+                        ${day.avisos.map(aviso => `
+                            <div id="aviso-${aviso.id}" class="aviso-item bg-white p-3 rounded-lg shadow-sm border border-gray-200 flex flex-col sm:flex-row justify-between items-start sm:items-center">
+                                <div class="flex-grow mr-2 mb-2 sm:mb-0">
+                                    <p class="font-medium text-gray-700">Horas</p>
+                                    <p class="text-sm text-gray-500">${aviso.startTime} - ${aviso.endTime} (${minutesToHoursDecimal(aviso.durationMinutes)}h)</p>
+                                </div>
+                                <div class="flex space-x-2">
+                                    <button data-day-date="${day.date}" data-aviso-id="${aviso.id}" class="edit-aviso-btn px-2 py-1 bg-yellow-500 text-white rounded-md text-sm hover:bg-yellow-600 transition-colors duration-200">Editar</button>
+                                    <button data-day-date="${day.date}" data-aviso-id="${aviso.id}" class="delete-aviso-btn btn-danger text-sm">Eliminar</button>
+                                </div>
+                            </div>
+                        `).join('')}
+                    </div>
+
+                    <!-- Formulario para añadir aviso -->
+                    <div class="add-aviso-form flex flex-col gap-3 ${day.isFinished ? 'opacity-60 pointer-events-none' : ''}">
+                        <div class="flex gap-2">
+                            <input type="time" class="start-time-input p-2 border border-gray-300 rounded-lg w-1/2 focus:ring-blue-500 focus:border-blue-500" value="${lastAvisoEndTime}" ${day.avisos.length > 0 ? 'readonly' : ''} ${day.isFinished ? 'disabled' : ''}>
+                            <input type="time" class="end-time-input p-2 border border-gray-300 rounded-lg w-1/2 focus:ring-blue-500 focus:border-blue-500" ${day.isFinished ? 'disabled' : ''}>
+                        </div>
+                        <button class="add-aviso-btn btn-primary ${day.isFinished ? 'hidden' : ''}" data-day-date="${day.date}">
+                            Añadir Horas <span class="inline-block align-middle ml-1">➕</span>
+                        </button>
+                    </div>
+
+                    <div class="mt-4 pt-4 border-t border-gray-200 flex justify-between items-center">
+                        <div>
+                            <p class="text-lg font-semibold text-gray-700">Total Horas Imputadas: <span id="total-hours-${day.date}">${minutesToHoursDecimal(day.totalMinutes)}h</span></p>
+                            <p class="text-lg font-semibold text-gray-700 text-green-700">Horas Libres: <span id="free-hours-${day.date}">${minutesToHoursDecimal(WORKDAY_MINUTES - day.totalMinutes)}h</span></p>
+                        </div>
+                        <button class="toggle-finished-btn btn-secondary ${day.isFinished ? 'bg-emerald-500 text-white hover:bg-emerald-600' : ''}" data-day-date="${day.date}">
+                            ${day.isFinished ? '✅ Finalizado' : 'Marcar como Finalizado'}
+                        </button>
+                    </div>
+                `;
+                daysContainer.appendChild(dayCard);
+            });
+
+            addEventListeners(); // Re-añade los listeners después de renderizar
+        }
+
+        // Añade event listeners a los botones y campos de entrada
+        function addEventListeners() {
+            // Botones "Añadir Horas"
+            document.querySelectorAll('.add-aviso-btn').forEach(button => {
+                button.onclick = (event) => {
+                    const dayCard = event.target.closest('.day-card'); // Obtener el dayCard directamente
+                    if (!dayCard) {
+                        console.error('Error: dayCard no encontrado para el botón de Añadir Horas.', event.target);
+                        return; // Evita el error si dayCard es null
+                    }
+                    const dayDate = dayCard.id.replace('day-', ''); // Obtener dayDate desde el ID del dayCard
+                    
+                    const startTimeInput = dayCard.querySelector('.start-time-input');
+                    const endTimeInput = dayCard.querySelector('.end-time-input');
+
+                    let startTime = startTimeInput.value;
+                    const endTime = endTimeInput.value;
+
+                    // Carga los datos más recientes y asegura la estructura de la semana aquí
+                    const allData = loadData();
+                    const weekData = getWeekData(formatDate(currentWeekStartDate), allData);
+                    const day = weekData.days.find(d => d.date === dayDate);
+
+                    if (!day) {
+                         console.error("Día no encontrado:", dayDate);
+                         return;
+                    }
+
+                    // Si no se ha proporcionado una hora de inicio, y ya hay avisos, usa la hora de fin del último aviso
+                    if (day.avisos.length > 0 && !startTime) {
+                        startTime = day.avisos[day.avisos.length - 1].endTime;
+                    }
+
+                    if (startTime && endTime) {
+                        addAviso(allData, day, startTime, endTime); // Pasa el objeto 'allData' y 'day' directamente
+                        // Limpiar solo el campo de la hora de fin después de añadir
+                        endTimeInput.value = '';
+                    } else {
+                        showTemporaryMessage(dayCard, 'Por favor, rellena las horas de inicio y fin para el primer aviso, o solo la hora de fin para los siguientes.', 'bg-red-500');
+                    }
+                };
+            });
+
+            // Botones "Eliminar Aviso"
+            document.querySelectorAll('.delete-aviso-btn').forEach(button => {
+                button.onclick = (event) => {
+                    const dayCard = event.target.closest('.day-card');
+                    if (!dayCard) {
+                        console.error('Error: dayCard no encontrado para el botón de Eliminar Horas.', event.target);
+                        return;
+                    }
+                    const dayDate = dayCard.id.replace('day-', '');
+                    const avisoId = event.target.dataset.avisoId;
+                    const allData = loadData();
+                    const weekData = getWeekData(formatDate(currentWeekStartDate), allData);
+                    const day = weekData.days.find(d => d.date === dayDate);
+                    if (day) {
+                        deleteAviso(allData, day, avisoId); // Pasa el objeto 'allData' y 'day' directamente
+                    }
+                };
+            });
+
+            // Botones "Editar Aviso"
+            document.querySelectorAll('.edit-aviso-btn').forEach(button => {
+                button.onclick = (event) => {
+                    const dayCard = event.target.closest('.day-card');
+                    if (!dayCard) {
+                        console.error('Error: dayCard no encontrado para el botón de Editar Horas.', event.target);
+                        return;
+                    }
+                    const dayDate = dayCard.id.replace('day-', '');
+                    const avisoId = event.target.dataset.avisoId;
+                    const allData = loadData();
+                    const weekData = getWeekData(formatDate(currentWeekStartDate), allData);
+                    const day = weekData.days.find(d => d.date === dayDate);
+                    if (day) {
+                        const aviso = day.avisos.find(a => a.id === avisoId);
+                        if (aviso) {
+                            openEditModal(allData, day, aviso); // Pasa el objeto 'allData', 'day' y 'aviso' directamente
+                        }
+                    }
+                };
+            });
+
+            // Botones "Marcar como Finalizado"
+            document.querySelectorAll('.toggle-finished-btn').forEach(button => {
+                button.onclick = (event) => {
+                    const dayCard = event.target.closest('.day-card');
+                    if (!dayCard) {
+                        console.error('Error: dayCard no encontrado para el botón de Finalizar.', event.target);
+                        return;
+                    }
+                    const dayDate = dayCard.id.replace('day-', '');
+                    const allData = loadData();
+                    const weekData = getWeekData(formatDate(currentWeekStartDate), allData);
+                    const day = weekData.days.find(d => d.date === dayDate);
+                    if (day) {
+                        toggleDayFinished(allData, day); // Pasa el objeto 'allData' y 'day' directamente
+                    }
+                };
+            });
+        }
+
+        // Mensaje temporal para feedback al usuario
+        function showTemporaryMessage(containerElement, message, bgColorClass) {
+            if (!containerElement) { // Agregamos una verificación para containerElement
+                console.error("No se pudo mostrar el mensaje temporal: el elemento contenedor es nulo.");
+                return;
+            }
+            const msgDiv = document.createElement('div');
+            msgDiv.className = `absolute top-0 left-0 w-full p-2 text-center text-white ${bgColorClass} rounded-t-xl z-10`;
+            msgDiv.textContent = message;
+            containerElement.prepend(msgDiv);
+            setTimeout(() => {
+                msgDiv.remove();
+            }, 3000);
+        }
+
+        // Función para añadir un aviso (modificada para recibir 'allData' y 'day' directamente)
+        function addAviso(allData, day, startTime, endTime) {
+            if (day) {
+                const durationMinutes = calculateDurationMinutes(startTime, endTime);
+                const newAviso = {
+                    id: generateUniqueId(),
+                    startTime,
+                    endTime,
+                    durationMinutes
+                };
+                day.avisos.push(newAviso);
+                updateDayTotals(day);
+                saveData(allData); // Guarda el objeto 'allData' que ahora tiene los cambios
+                renderWeek(); // Vuelve a renderizar para actualizar la UI
+                showTemporaryMessage(document.getElementById(`day-${day.date}`), 'Horas añadidas.', 'bg-green-500');
+            }
+        }
+
+        // Función para eliminar un aviso (modificada para recibir 'allData' y 'day' directamente)
+        function deleteAviso(allData, day, avisoId) {
+            if (day) {
+                day.avisos = day.avisos.filter(aviso => aviso.id !== avisoId);
+                const currentDayCard = document.getElementById(`day-${day.date}`);
+                if (day.avisos.length === 0) {
+                     const startTimeInput = currentDayCard.querySelector('.start-time-input');
+                     startTimeInput.removeAttribute('readonly');
+                     startTimeInput.value = ''; // Limpiar el valor pre-llenado
+                }
+                updateDayTotals(day);
+                saveData(allData); // Guarda el objeto 'allData' que ahora tiene los cambios
+                renderWeek();
+                showTemporaryMessage(document.getElementById(`day-${day.date}`), 'Horas eliminadas.', 'bg-yellow-500');
+            }
+        }
+
+        // Función para actualizar un aviso existente (modificada para recibir 'allData' y 'day' directamente)
+        function updateAviso(allData, day, avisoId, newStartTime, newEndTime) {
+            if (day) {
+                const avisoToUpdate = day.avisos.find(aviso => aviso.id === avisoId);
+                if (avisoToUpdate) {
+                    avisoToUpdate.startTime = newStartTime;
+                    avisoToUpdate.endTime = newEndTime;
+                    avisoToUpdate.durationMinutes = calculateDurationMinutes(newStartTime, newEndTime);
+                    updateDayTotals(day);
+                    saveData(allData); // Guarda el objeto 'allData' que ahora tiene los cambios
+                    renderWeek();
+                    showTemporaryMessage(document.getElementById(`day-${day.date}`), 'Horas actualizadas.', 'bg-blue-500');
+                }
+            }
+        }
+
+        // Abre un modal (o un formulario inline) para editar un aviso (modificada para recibir 'allData', 'day' y 'aviso' directamente)
+        function openEditModal(allData, day, aviso) {
+            if (!aviso || !day) return;
+
+            const existingModal = document.getElementById('editAvisoModal');
+            if (existingModal) existingModal.remove();
+
+            const modalHtml = `
+                <div id="editAvisoModal" class="fixed inset-0 bg-gray-600 bg-opacity-75 flex justify-center items-center z-50 p-4">
+                    <div class="bg-white p-6 rounded-lg shadow-xl w-full max-w-sm">
+                        <h4 class="text-lg font-bold mb-4">Editar Horas</h4>
+                        <div class="flex gap-3 mb-4">
+                            <input type="time" id="editStartTime" value="${aviso.startTime}" class="w-1/2 p-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500">
+                            <input type="time" id="editEndTime" value="${aviso.endTime}" class="w-1/2 p-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500">
+                        </div>
+                        <div class="flex justify-end gap-3">
+                            <button id="cancelEditBtn" class="btn-secondary">Cancelar</button>
+                            <button id="saveEditBtn" class="btn-primary">Guardar Cambios</button>
+                        </div>
+                    </div>
+                </div>
+            `;
+            document.body.insertAdjacentHTML('beforeend', modalHtml);
+
+            document.getElementById('cancelEditBtn').onclick = () => {
+                document.getElementById('editAvisoModal').remove();
+            };
+
+            document.getElementById('saveEditBtn').onclick = () => {
+                const newStartTime = document.getElementById('editStartTime').value;
+                const newEndTime = document.getElementById('editEndTime').value;
+
+                if (newStartTime && newEndTime) {
+                    updateAviso(allData, day, aviso.id, newStartTime, newEndTime); // Se sigue pasando aviso.id porque updateAviso lo necesita
+                    document.getElementById('editAvisoModal').remove();
+                } else {
+                    const modalContent = document.querySelector('#editAvisoModal .bg-white');
+                    showTemporaryMessage(modalContent, 'Por favor, rellena las horas para actualizar.', 'bg-red-500');
+                }
+            };
+        }
+
+        // Alterna el estado "finalizado" del día (modificada para recibir 'allData' y 'day' directamente)
+        function toggleDayFinished(allData, day) {
+            if (day) {
+                day.isFinished = !day.isFinished;
+                saveData(allData); // Guarda el objeto 'allData' que ahora tiene los cambios
+                renderWeek();
+                showTemporaryMessage(
+                    document.getElementById(`day-${day.date}`),
+                    day.isFinished ? 'Día marcado como Finalizado.' : 'Día desmarcado como Finalizado.',
+                    day.isFinished ? 'bg-emerald-500' : 'bg-gray-500'
+                );
+            }
+        }
+
+        // Actualiza el total de minutos y horas libres para un día
+        function updateDayTotals(day) {
+            day.totalMinutes = day.avisos.reduce((sum, aviso) => sum + aviso.durationMinutes, 0);
+        }
+
+        // Navegación de semana
+        document.getElementById('prevWeekBtn').onclick = () => {
+            currentWeekStartDate.setDate(currentWeekStartDate.getDate() - 7);
+            renderWeek();
+        };
+
+        document.getElementById('nextWeekBtn').onclick = () => {
+            currentWeekStartDate.setDate(currentWeekStartDate.getDate() + 7);
+            renderWeek();
+        };
+
+        // Inicialización de la aplicación al cargar la página
+        window.onload = function() {
+            // Establece currentWeekStartDate al Lunes de la semana actual
+            currentWeekStartDate = getStartOfWeek(new Date());
+            renderWeek();
+        };
+    </script>
+</body>
+</html>
