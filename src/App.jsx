@@ -1,19 +1,28 @@
 import React, { useState, useEffect } from 'react';
 import { getStartOfWeek, formatDate } from './utils/helpers';
-import { loadData, saveData, getWeekData } from './utils/storage';
+import { fetchWeekData, saveWeekData } from './utils/storage';
 import DayCard from './components/DayCard';
-import { ChevronLeft, ChevronRight, BriefcaseMedical } from 'lucide-react';
+import { ChevronLeft, ChevronRight, BriefcaseMedical, Loader2 } from 'lucide-react';
 import './index.css';
 
 function App() {
   const [currentWeekStartDate, setCurrentWeekStartDate] = useState(getStartOfWeek(new Date()));
   const [weekData, setWeekData] = useState(null);
+  const [loading, setLoading] = useState(true);
 
   // Load data when week changes
   useEffect(() => {
-    const allData = loadData();
-    const data = getWeekData(formatDate(currentWeekStartDate), allData);
-    setWeekData(data);
+    let isMounted = true;
+    const loadWeek = async () => {
+      setLoading(true);
+      const data = await fetchWeekData(formatDate(currentWeekStartDate));
+      if (isMounted) {
+        setWeekData(data);
+        setLoading(false);
+      }
+    };
+    loadWeek();
+    return () => { isMounted = false; };
   }, [currentWeekStartDate]);
 
   const handlePrevWeek = () => {
@@ -28,20 +37,18 @@ function App() {
     setCurrentWeekStartDate(newDate);
   };
 
-  const handleUpdateDay = (updatedDayData) => {
-    const allData = loadData();
-    const currentWeekData = getWeekData(formatDate(currentWeekStartDate), allData);
+  const handleUpdateDay = async (updatedDayData) => {
+    if (!weekData) return;
 
-    // Update the specific day
-    const updatedDays = currentWeekData.days.map(d => d.date === updatedDayData.date ? updatedDayData : d);
-    currentWeekData.days = updatedDays;
-    allData[currentWeekData.weekStartDate] = currentWeekData;
+    // Update the specific day locallly
+    const updatedDays = weekData.days.map(d => d.date === updatedDayData.date ? updatedDayData : d);
+    const newWeekData = { ...weekData, days: updatedDays };
 
-    saveData(allData);
-    setWeekData(currentWeekData); // re-render
+    setWeekData(newWeekData); // optimistically update UI
+
+    // Guarda en Firestore
+    await saveWeekData(newWeekData);
   };
-
-  if (!weekData) return null;
 
   const endDate = new Date(currentWeekStartDate);
   endDate.setDate(currentWeekStartDate.getDate() + 6);
@@ -83,16 +90,26 @@ function App() {
         </div>
       </header>
 
-      {/* Days Grid */}
-      <main className="grid grid-cols-1 lg:grid-cols-2 xlg:grid-cols-3 2xl:grid-cols-4 gap-8">
-        {weekData.days.map((dayData, index) => (
-          <DayCard
-            key={dayData.date}
-            dayData={dayData}
-            onUpdateDay={handleUpdateDay}
-          />
-        ))}
-      </main>
+      {/* Content */}
+      {loading ? (
+        <div className="flex-1 flex justify-center items-center h-64">
+          <Loader2 className="w-12 h-12 text-cyan-500 animate-spin" />
+        </div>
+      ) : !weekData ? (
+        <div className="flex-1 flex justify-center items-center h-64 text-gray-400">
+          Error fetching data
+        </div>
+      ) : (
+        <main className="grid grid-cols-1 lg:grid-cols-2 xlg:grid-cols-3 2xl:grid-cols-4 gap-8">
+          {weekData.days.map((dayData) => (
+            <DayCard
+              key={dayData.date}
+              dayData={dayData}
+              onUpdateDay={handleUpdateDay}
+            />
+          ))}
+        </main>
+      )}
 
     </div>
   );
