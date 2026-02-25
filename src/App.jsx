@@ -14,11 +14,27 @@ function App() {
   useEffect(() => {
     let isMounted = true;
     const loadWeek = async () => {
-      setLoading(true);
+      // 1. Try to load from LocalStorage first for instant render
+      const localData = loadData();
+      const localWeekData = getWeekData(formatDate(currentWeekStartDate), localData);
+
+      if (isMounted) {
+        setWeekData(localWeekData);
+        // Don't set loading true if we already have local data, to prevent blinking
+        if (!localData[formatDate(currentWeekStartDate)]) {
+          setLoading(true);
+        }
+      }
+
+      // 2. Fetch fresh data from Firestore in the background
       const data = await fetchWeekData(formatDate(currentWeekStartDate));
+
       if (isMounted) {
         setWeekData(data);
         setLoading(false);
+        // Save the fresh Firestore data back to LocalStorage to keep cache updated
+        const updatedLocalData = { ...localData, [formatDate(currentWeekStartDate)]: data };
+        saveData(updatedLocalData);
       }
     };
     loadWeek();
@@ -45,6 +61,11 @@ function App() {
     const newWeekData = { ...weekData, days: updatedDays };
 
     setWeekData(newWeekData); // optimistically update UI
+
+    // Save to LocalStorage for instant loads next time
+    const localData = loadData();
+    const updatedLocalData = { ...localData, [newWeekData.weekStartDate]: newWeekData };
+    saveData(updatedLocalData);
 
     // Guarda en Firestore
     await saveWeekData(newWeekData);

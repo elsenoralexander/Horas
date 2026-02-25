@@ -20,7 +20,7 @@ const DayCard = ({ dayData, onUpdateDay }) => {
     const lastAvisoEndTime = avisos.length > 0 ? avisos[avisos.length - 1].endTime : '';
 
     // Add new hours
-    const handleAddAviso = () => {
+    const handleAddAviso = async () => {
         let start = startTime;
         if (avisos.length > 0 && !start) {
             start = lastAvisoEndTime;
@@ -33,7 +33,7 @@ const DayCard = ({ dayData, onUpdateDay }) => {
             const newAvisos = [...avisos, newAviso];
             const newTotal = newAvisos.reduce((sum, av) => sum + av.durationMinutes, 0);
 
-            onUpdateDay({
+            await onUpdateDay({
                 ...dayData,
                 avisos: newAvisos,
                 totalMinutes: newTotal
@@ -48,10 +48,10 @@ const DayCard = ({ dayData, onUpdateDay }) => {
         }
     };
 
-    const handleDeleteAviso = (id) => {
+    const handleDeleteAviso = async (id) => {
         const newAvisos = avisos.filter(a => a.id !== id);
         const newTotal = newAvisos.reduce((sum, av) => sum + av.durationMinutes, 0);
-        onUpdateDay({
+        await onUpdateDay({
             ...dayData,
             avisos: newAvisos,
             totalMinutes: newTotal
@@ -64,7 +64,7 @@ const DayCard = ({ dayData, onUpdateDay }) => {
         setEditEnd(aviso.endTime);
     };
 
-    const saveEdit = (id) => {
+    const saveEdit = async (id) => {
         if (editStart && editEnd) {
             const newDuration = calculateDurationMinutes(editStart, editEnd);
             const newAvisos = avisos.map(a =>
@@ -72,7 +72,7 @@ const DayCard = ({ dayData, onUpdateDay }) => {
             );
             const newTotal = newAvisos.reduce((sum, av) => sum + av.durationMinutes, 0);
 
-            onUpdateDay({
+            await onUpdateDay({
                 ...dayData,
                 avisos: newAvisos,
                 totalMinutes: newTotal
@@ -83,8 +83,8 @@ const DayCard = ({ dayData, onUpdateDay }) => {
         }
     };
 
-    const toggleFinished = () => {
-        onUpdateDay({
+    const toggleFinished = async () => {
+        await onUpdateDay({
             ...dayData,
             isFinished: !isFinished
         });

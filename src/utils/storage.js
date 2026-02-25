@@ -51,9 +51,11 @@ export const fetchWeekData = async (startDateString) => {
 
 export const saveWeekData = async (weekData) => {
     try {
-        // Asegurar que no pasamos undefineds u otros tipos inválidos para Firebase
-        const docRef = doc(db, "semanas", weekData.weekStartDate);
-        await setDoc(docRef, weekData);
+        // Create a deep copy and clean it up for Firestore
+        const cleanData = JSON.parse(JSON.stringify(weekData));
+
+        const docRef = doc(db, "semanas", cleanData.weekStartDate);
+        await setDoc(docRef, cleanData);
     } catch (e) {
         console.error("Error guardando datos en Firestore:", e);
     }
