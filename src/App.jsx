@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { getStartOfWeek, formatDate } from './utils/helpers';
-import { fetchWeekData, saveWeekData } from './utils/storage';
+import { fetchWeekData, saveWeekData, loadData, saveData, getWeekData } from './utils/storage';
 import DayCard from './components/DayCard';
 import { ChevronLeft, ChevronRight, BriefcaseMedical, Loader2 } from 'lucide-react';
 import './index.css';
