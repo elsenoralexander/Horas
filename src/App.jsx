@@ -8,7 +8,7 @@ import './index.css';
 function App() {
   const [currentWeekStartDate, setCurrentWeekStartDate] = useState(getStartOfWeek(new Date()));
   const [weekData, setWeekData] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const [syncing, setSyncing] = useState(false);
 
   // Load data when week changes
   useEffect(() => {
@@ -16,37 +16,28 @@ function App() {
     const loadWeek = async () => {
       const startDateStr = formatDate(currentWeekStartDate);
 
-      // 1. Try to load from LocalStorage first for instant render
+      // 1. Instantly load from local storage or generate an empty week template
       const localData = loadData();
-      const hasLocalData = !!localData[startDateStr];
       const localWeekData = getWeekData(startDateStr, localData);
 
       if (isMounted) {
         setWeekData(localWeekData);
-        // Prevent blinking: set loading to false immediately if we have local cache
-        if (hasLocalData) {
-          setLoading(false);
-        } else {
-          setLoading(true);
-        }
+        setSyncing(true);
       }
 
       // 2. Fetch fresh data from Firestore in the background
-      const data = await fetchWeekData(startDateStr);
+      const result = await fetchWeekData(startDateStr);
 
       if (isMounted) {
-        // Si data existe, lo usamos como fuente principal de verdad (Single Source of Truth)
-        if (data) {
-          setWeekData(data);
-          // Guardamos en LocalStorage también
-          const updatedLocalData = { ...loadData(), [startDateStr]: data };
+        if (!result.error && result.data) {
+          // Merge remote data and update local cache
+          setWeekData(result.data);
+          const updatedLocalData = { ...loadData(), [startDateStr]: result.data };
           saveData(updatedLocalData);
-        } else {
-          // Si Firebase devolvió null (documento no existe o red caída), guardamos lo que tenemos localmente
-          // en Firebase. Esto también inicializa las semanas nuevas.
-          saveWeekData(localWeekData);
         }
-        setLoading(false);
+        // If there was no data on Firebase but no error, we do not overwrite Firebase with an empty week.
+        // It will be saved naturally when the user adds hours. This prevents accidental data loss.
+        setSyncing(false);
       }
     };
     loadWeek();
@@ -96,8 +87,14 @@ function App() {
         <div className="absolute bottom-0 left-1/4 w-96 h-96 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none"></div>
 
         <div className="flex items-center gap-4 z-10">
-          <div className="p-3 bg-gradient-to-br from-cyan-500 to-emerald-500 rounded-2xl shadow-lg shadow-cyan-500/20">
+          <div className="p-3 bg-gradient-to-br from-cyan-500 to-emerald-500 rounded-2xl shadow-lg shadow-cyan-500/20 relative">
             <BriefcaseMedical className="w-8 h-8 text-white" />
+            {syncing && (
+              <span className="absolute top-[-4px] right-[-4px] flex w-3 h-3">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-cyan-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full w-3 h-3 bg-cyan-500"></span>
+              </span>
+            )}
           </div>
           <div>
             <h1 className="text-3xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-gray-100 to-gray-400">Control Horario</h1>
@@ -124,13 +121,9 @@ function App() {
       </header>
 
       {/* Content */}
-      {loading ? (
-        <div className="flex-1 flex justify-center items-center h-64">
-          <Loader2 className="w-12 h-12 text-cyan-500 animate-spin" />
-        </div>
-      ) : !weekData ? (
-        <div className="flex-1 flex justify-center items-center h-64 text-gray-400">
-          Error fetching data
+      {!weekData ? (
+        <div className="flex-1 flex justify-center items-center h-64 text-cyan-500">
+          <Loader2 className="w-12 h-12 animate-spin" />
         </div>
       ) : (
         <main className="grid grid-cols-1 lg:grid-cols-2 xlg:grid-cols-3 2xl:grid-cols-4 gap-8">

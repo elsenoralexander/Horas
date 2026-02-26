@@ -49,13 +49,13 @@ export const fetchWeekData = async (startDateString) => {
         const docSnap = await getDoc(docRef);
 
         if (docSnap.exists()) {
-            return docSnap.data();
+            return { data: docSnap.data(), error: null };
         } else {
-            return null; // Don't return empty weeks here so we don't accidentally erase caches
+            return { data: null, error: null }; // Documento no existe aún
         }
     } catch (e) {
         console.error("Error cargando datos de Firestore:", e);
-        return null; // Return null on error
+        return { data: null, error: e };
     }
 };
 
