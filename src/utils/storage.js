@@ -51,42 +51,11 @@ export const fetchWeekData = async (startDateString) => {
         if (docSnap.exists()) {
             return docSnap.data();
         } else {
-            const startDate = parseDate(startDateString);
-            const daysOfWeek = [];
-            for (let i = 0; i < 7; i++) {
-                const dayDate = new Date(startDate);
-                dayDate.setDate(startDate.getDate() + i);
-                daysOfWeek.push({
-                    date: formatDate(dayDate),
-                    avisos: [],
-                    isFinished: false,
-                    totalMinutes: 0
-                });
-            }
-            return {
-                weekStartDate: startDateString,
-                days: daysOfWeek
-            };
+            return null; // Don't return empty weeks here so we don't accidentally erase caches
         }
     } catch (e) {
         console.error("Error cargando datos de Firestore:", e);
-        // Fallback or offline support
-        const startDate = parseDate(startDateString);
-        const daysOfWeek = [];
-        for (let i = 0; i < 7; i++) {
-            const dayDate = new Date(startDate);
-            dayDate.setDate(startDate.getDate() + i);
-            daysOfWeek.push({
-                date: formatDate(dayDate),
-                avisos: [],
-                isFinished: false,
-                totalMinutes: 0
-            });
-        }
-        return {
-            weekStartDate: startDateString,
-            days: daysOfWeek
-        };
+        return null; // Return null on error
     }
 };
 

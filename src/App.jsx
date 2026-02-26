@@ -14,27 +14,39 @@ function App() {
   useEffect(() => {
     let isMounted = true;
     const loadWeek = async () => {
+      const startDateStr = formatDate(currentWeekStartDate);
+
       // 1. Try to load from LocalStorage first for instant render
       const localData = loadData();
-      const localWeekData = getWeekData(formatDate(currentWeekStartDate), localData);
+      const hasLocalData = !!localData[startDateStr];
+      const localWeekData = getWeekData(startDateStr, localData);
 
       if (isMounted) {
         setWeekData(localWeekData);
-        // Don't set loading true if we already have local data, to prevent blinking
-        if (!localData[formatDate(currentWeekStartDate)]) {
+        // Prevent blinking: set loading to false immediately if we have local cache
+        if (hasLocalData) {
+          setLoading(false);
+        } else {
           setLoading(true);
         }
       }
 
       // 2. Fetch fresh data from Firestore in the background
-      const data = await fetchWeekData(formatDate(currentWeekStartDate));
+      const data = await fetchWeekData(startDateStr);
 
       if (isMounted) {
-        setWeekData(data);
+        // Si data existe, lo usamos como fuente principal de verdad (Single Source of Truth)
+        if (data) {
+          setWeekData(data);
+          // Guardamos en LocalStorage también
+          const updatedLocalData = { ...loadData(), [startDateStr]: data };
+          saveData(updatedLocalData);
+        } else {
+          // Si Firebase devolvió null (documento no existe o red caída), guardamos lo que tenemos localmente
+          // en Firebase. Esto también inicializa las semanas nuevas.
+          saveWeekData(localWeekData);
+        }
         setLoading(false);
-        // Save the fresh Firestore data back to LocalStorage to keep cache updated
-        const updatedLocalData = { ...localData, [formatDate(currentWeekStartDate)]: data };
-        saveData(updatedLocalData);
       }
     };
     loadWeek();
